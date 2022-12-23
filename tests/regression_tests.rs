@@ -33,13 +33,16 @@ fn regression_tests() -> Result<(), Error> {
         let tests = read_tests_via_regex(&contents);
         println!("parsed tests: {:?}", tests);
 
-        // execute
-        // let result = run_test(test, path.to_str().unwrap().to_string())?;
+        for test in tests {
+            // execute
+            let filename = path.to_str().unwrap().to_string();
+            let result = run_test(test, &filename)?;
 
-        // todo: assert
-        // let expected = result.Output;
-        let actual: Vec<String> = vec![];
-        // assert_eq!(expected, actual);
+            // todo: assert
+            // let expected = result.Output;
+            let actual: Vec<String> = vec![];
+            // assert_eq!(expected, actual);
+        }
     }
 
     assert!(false);
@@ -102,31 +105,44 @@ fn read_test(file: &File) -> Result<Test, Error> {
     Ok(test)
 }
 
-fn run_test(mut test: Test, filename: String) -> Result<Test, Error> {
-    if cfg!(target_os = "windows") {
+fn run_test(mut test: Test, filename: &String) -> Result<Test, Error> {
+    let mut use_stdin = false;
+
+    if cfg!(windows) {
         test.Command = test.Command.replace("/dev/null", "nul");
 
         if test.Command.contains("/dev/std") {
             todo!("mark success");
+            //return;
         }
     }
 
     if test.Command.contains("-f") {
         test.Command = "ledger ".to_string() + test.Command.as_str();
 
-        todo!("complete");
+        let re = Regex::new(r#"-f (-|/dev/stdin)(\s|$)"#).unwrap();
+        if re.is_match(&test.Command) {
+            use_stdin = true;
+        }
     } else {
         test.Command = format!(r#"ledger -f "{}" {}"#, filename, test.Command);
     }
 
-    // todo: if use stdin
+    // execute test
+    let cmd = Command::new(&test.Command).spawn()?;
+
+    if use_stdin {
+        // read from file into stdin.
+        let input = fs::read_to_string(filename)?;
+        //cmd.stdin.
+    }
 
     if !test.Output.is_empty() {
-        let cmd = Command::new(&test.Command).spawn()?;
         let mut output = String::default();
         let _read = cmd.stdout.unwrap().read_to_string(&mut output)?;
 
-        if cfg!(target_os = "windows") {
+        if cfg!(windows) {
+            // target_os = "windows") {
             todo!("complete");
             // output = for line in output.lines() {
             //     line.replace("\r\n", "\n")
@@ -139,11 +155,10 @@ fn run_test(mut test: Test, filename: String) -> Result<Test, Error> {
 }
 
 fn read_tests_via_regex(contents: &String) -> Vec<Test> {
-    //let pattern = r"test (.+?)end test";
+    // get everything between "test " and "end test", on separate lines.
     let pattern = r"^test ([\s\S]+?)^end test$";
-    
+
     let re = RegexBuilder::new(pattern).multi_line(true).build().unwrap();
-    // let re = Regex::new(pattern).unwrap();
 
     re.captures_iter(contents)
         .map(|captures| captures.get(1).unwrap().as_str())
@@ -152,9 +167,11 @@ fn read_tests_via_regex(contents: &String) -> Vec<Test> {
 }
 
 fn parse_test(test_string: &str) -> Test {
-    let test = Test::default();
+    let mut test = Test::default();
 
-    println!("got: {:?}", test_string);
+    let lines: Vec<String> = test_string.lines().map(|line| line.to_owned()).collect();
+    test.Command = lines[0].to_owned();
+    test.Output = lines[1..].to_vec();
 
     test
 }
