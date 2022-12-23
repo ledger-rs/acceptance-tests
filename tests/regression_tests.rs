@@ -4,10 +4,15 @@
  * It reuses the original Ledger .test files.
  */
 
-use std::{fs, io::Read, path::PathBuf, process::Command};
+use std::{
+    fs::{self, File},
+    io::{BufRead, BufReader, Read},
+    path::PathBuf,
+    process::Command,
+};
 
 use anyhow::{Error, Ok};
-use regex::Regex;
+use regex::{Regex, RegexBuilder};
 
 #[test]
 fn regression_tests() -> Result<(), Error> {
@@ -20,21 +25,24 @@ fn regression_tests() -> Result<(), Error> {
     for entry in glob::glob("**/*.test")? {
         let path = entry.expect("test file");
 
-        // todo: parse
+        // parse
         let contents = fs::read_to_string(&path)?;
+        //let file = fs::File::open(&path)?;
 
-        let test = read_test(contents);
-
-        println!("parsed test: {:?}", test);
+        // while let test = read_test(&file)? {
+        let tests = read_tests_via_regex(&contents);
+        println!("parsed tests: {:?}", tests);
 
         // execute
-        let result = run_test(test, path.to_str().unwrap().to_string())?;
+        // let result = run_test(test, path.to_str().unwrap().to_string())?;
 
         // todo: assert
-        let expected = result.Output;
+        // let expected = result.Output;
         let actual: Vec<String> = vec![];
-        assert_eq!(expected, actual);
+        // assert_eq!(expected, actual);
     }
+
+    assert!(false);
 
     Ok(())
 }
@@ -47,44 +55,51 @@ struct Test {
     ExitCode: u16,
 }
 
-fn read_test(contents: String) -> Test {
+fn read_test(file: &File) -> Result<Test, Error> {
+    // contents: String
+
     let mut test = Test::default();
     let mut in_output = false;
     let mut in_error = false;
 
-    for line in contents.lines() {
+    let reader = BufReader::new(file);
+    //for line in contents.lines() {
+    for line in reader.lines() {
+        let line = line?;
+
         if line.starts_with("test") {
             let command = line[5..].to_string();
 
             let match_regex = Regex::new(r"(.*) -> ([0-9]+)").unwrap();
             //let matches = match_regex.is_match(&command);
             if let Some(captures) = match_regex.captures(&command) {
-                todo!("complete");
-                //todo: test.Command =
-                //todo: test.ExitCode = match_regex.captures(line);
-                //captures.get(2)
+                // todo: transform line
+                test.Command = captures.get(1).unwrap().as_str().to_owned();
+                test.ExitCode = captures.get(2).unwrap().as_str().parse().unwrap();
             } else {
                 test.Command = command;
             }
+            in_output = true;
         } else if in_output {
             if line.starts_with("end test") {
                 in_output = false;
-                // todo: in_error = false;
-                todo!("complete");
+                in_error = false;
                 break;
             } else if in_error {
+                // todo: transform line
                 test.Error.push(line.to_string());
             } else {
                 if line.starts_with("__ERROR__") {
                     in_error = true;
                 } else {
+                    // todo: transform line
                     test.Output.push(line.to_string());
                 }
             }
         }
     }
 
-    test
+    Ok(test)
 }
 
 fn run_test(mut test: Test, filename: String) -> Result<Test, Error> {
@@ -121,4 +136,25 @@ fn run_test(mut test: Test, filename: String) -> Result<Test, Error> {
 
     // Ok(output.to_owned())
     Ok(test)
+}
+
+fn read_tests_via_regex(contents: &String) -> Vec<Test> {
+    //let pattern = r"test (.+?)end test";
+    let pattern = r"^test ([\s\S]+?)^end test$";
+    
+    let re = RegexBuilder::new(pattern).multi_line(true).build().unwrap();
+    // let re = Regex::new(pattern).unwrap();
+
+    re.captures_iter(contents)
+        .map(|captures| captures.get(1).unwrap().as_str())
+        .map(|test_string| parse_test(test_string))
+        .collect()
+}
+
+fn parse_test(test_string: &str) -> Test {
+    let test = Test::default();
+
+    println!("got: {:?}", test_string);
+
+    test
 }
