@@ -4,7 +4,7 @@
  * It reuses the original Ledger .test files.
  */
 
-use std::{fs, path::PathBuf, process::Command, io::Read};
+use std::{fs, io::Read, path::PathBuf, process::Command};
 
 use anyhow::{Error, Ok};
 use regex::Regex;
@@ -53,17 +53,16 @@ fn read_test(contents: String) -> Test {
     let mut in_error = false;
 
     for line in contents.lines() {
-        println!("The line read: {}", line);
-
         if line.starts_with("test") {
             let command = line[5..].to_string();
 
             let match_regex = Regex::new(r"(.*) -> ([0-9]+)").unwrap();
-            let matches = match_regex.is_match(&command);
-            if matches {
+            //let matches = match_regex.is_match(&command);
+            if let Some(captures) = match_regex.captures(&command) {
                 todo!("complete");
                 //todo: test.Command =
                 //todo: test.ExitCode = match_regex.captures(line);
+                //captures.get(2)
             } else {
                 test.Command = command;
             }
@@ -89,17 +88,36 @@ fn read_test(contents: String) -> Test {
 }
 
 fn run_test(mut test: Test, filename: String) -> Result<Test, Error> {
+    if cfg!(target_os = "windows") {
+        test.Command = test.Command.replace("/dev/null", "nul");
+
+        if test.Command.contains("/dev/std") {
+            todo!("mark success");
+        }
+    }
 
     if test.Command.contains("-f") {
+        test.Command = "ledger ".to_string() + test.Command.as_str();
+
         todo!("complete");
-        // test.Command = "ledger " + test.Command;
     } else {
         test.Command = format!(r#"ledger -f "{}" {}"#, filename, test.Command);
     }
 
-    let cmd = Command::new(&test.Command).spawn()?;
-    let mut output = String::default();
-    let _read = cmd.stdout.unwrap().read_to_string(&mut output)?;
+    // todo: if use stdin
+
+    if !test.Output.is_empty() {
+        let cmd = Command::new(&test.Command).spawn()?;
+        let mut output = String::default();
+        let _read = cmd.stdout.unwrap().read_to_string(&mut output)?;
+
+        if cfg!(target_os = "windows") {
+            todo!("complete");
+            // output = for line in output.lines() {
+            //     line.replace("\r\n", "\n")
+            // }
+        }
+    }
 
     // Ok(output.to_owned())
     Ok(test)
